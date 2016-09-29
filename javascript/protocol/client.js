@@ -17,7 +17,7 @@ Faye.Client = Faye.Class({
     this.info('New client created for ?', endpoint);
     options = options || {};
 
-    Faye.validateOptions(options, ['interval', 'timeout', 'endpoints', 'proxy', 'retry', 'scheduler', 'websocketExtensions', 'tls', 'ca']);
+    Faye.validateOptions(options, ['interval', 'timeout', 'endpoints', 'proxy', 'retry', 'scheduler', 'websocketExtensions', 'tls', 'ca', 'transportMode']);
 
     this._endpoint   = endpoint || this.DEFAULT_ENDPOINT;
     this._channels   = new Faye.Channel.Set();
@@ -27,6 +27,8 @@ Faye.Client = Faye.Class({
     this._state     = this.UNCONNECTED;
 
     this._responseCallbacks = {};
+
+    this._deselectTransportAfterHandshake = (options.transportMode === 'fallback');
 
     this._advice = {
       reconnect: this.RETRY,
@@ -95,6 +97,8 @@ Faye.Client = Faye.Class({
       if (response.successful) {
         this._state = this.CONNECTED;
         this._dispatcher.clientId  = response.clientId;
+
+        if (this._deselectTransportAfterHandshake) this._dispatcher.deselectTransport();
 
         this._dispatcher.selectTransport(response.supportedConnectionTypes);
 

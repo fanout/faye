@@ -37,6 +37,9 @@ Faye.Dispatcher = Faye.Class({
       this._alternates[type] = Faye.URI.parse(this._alternates[type]);
 
     this.maxRequestSize = this.MAX_REQUEST_SIZE;
+
+    this._selectTransportCallsActive = 0;
+    this._selectTransportCallbacks = [];
   },
 
   endpointFor: function(connectionType) {
@@ -66,6 +69,8 @@ Faye.Dispatcher = Faye.Class({
   },
 
   selectTransport: function(transportTypes) {
+    this._selectTransportCallsActive++;
+
     Faye.Transport.get(this, transportTypes, this._disabled, function(transport) {
       this.debug('Selected ? transport for ?', transport.connectionType, Faye.URI.stringify(transport.endpoint));
 
@@ -74,10 +79,41 @@ Faye.Dispatcher = Faye.Class({
 
       this._transport = transport;
       this.connectionType = transport.connectionType;
+
+      this._selectTransportCallsActive--;
+
+      // make a copy of the callbacks, in case the array is modified while we are invoking
+      var callbacks = Faye.copyObject(this._selectTransportCallbacks);
+      this._selectTransportCallbacks.splice(0, this._selectTransportCallbacks.length);
+
+      for(var i = 0; i < callbacks.length; i++) {
+        callbacks[i]();
+      }
     }, this);
   },
 
+  deselectTransport: function() {
+    if (this._transport) delete this['_transport'];
+  },
+
   sendMessage: function(message, timeout, options) {
+    if (this._transport) {
+      this._sendMessage(message, timeout, options);
+    } else if (this._selectTransportCallsActive > 0) {
+      this.debug('No transport selected, waiting');
+
+      var self = this;
+      this._selectTransportCallbacks.push(function() {
+        if ('connectionType' in message) {
+          // replace with the transport we ended up using
+          message['connectionType'] = self.connectionType;
+        }
+        self._sendMessage(message, timeout, options);
+      });
+    }
+  },
+
+  _sendMessage: function(message, timeout, options) {
     options = options || {};
 
     var id       = message.id,
